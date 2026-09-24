@@ -1,2 +1,12 @@
-# truck-loading-planner
-3D-truck-loading-planner
+# 卡车装载规划器
+
+三维智能配载工具。在线版本由 GitHub Pages 自动发布。
+
+## 功能
+
+- 三维货物摆放与拖动
+- 智能装载优化
+- Excel 批量导入
+- 图片导出
+
+打开在线站点即可使用，无需安装。

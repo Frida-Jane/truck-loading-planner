@@ -1,0 +1,323 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>卡车装载规划器 - 3D智能配载工具</title>
+  <link rel="icon" href="data:,">
+<link rel="stylesheet" href="css/style.css?v=16">
+</head>
+<body>
+
+<!-- 顶部导航 -->
+<header class="header">
+  <div class="header-left">
+    <div class="header-title">
+      <span class="icon">🚛</span>
+      卡车装载规划器
+      <span class="header-subtitle">3D智能配载工具 · 离线版</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <button class="header-btn mobile-panel-btn" id="mobileConfigBtn" aria-controls="mobileConfigPanel" aria-expanded="false">⚙️ 配置</button>
+    <button class="header-btn mobile-panel-btn" id="mobileStatsBtn" aria-controls="mobileStatsPanel" aria-expanded="false">📊 结果</button>
+    <button class="header-btn danger" id="clearBtn">🗑️ 清空所有货物</button>
+    <button class="header-btn" id="undoBtn" title="撤销 (Ctrl+Z)">↶ 撤销</button>
+    <button class="header-btn" id="redoBtn" title="恢复到本轮初始摆放位置">↷ 重做</button>
+    <button class="header-btn" id="exportBtn" title="导出截图">📷 导出图片</button>
+    <button class="header-btn primary" id="optimizeBtn">✨ 智能优化</button>
+  </div>
+</header>
+
+<!-- 主容器 -->
+<div class="app-container">
+
+  <!-- 左侧控制面板 -->
+  <aside class="sidebar-left scrollable" id="mobileConfigPanel">
+
+    <!-- 车辆设置 -->
+    <div class="sidebar-section">
+      <h3>🚚 车辆设置</h3>
+      <div class="form-group">
+        <label class="form-label">车型</label>
+        <select class="form-control" id="truckTemplate"></select>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">长 (cm)</label>
+          <input type="number" class="form-control" id="truckLength" step="10" min="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">宽 (cm)</label>
+          <input type="number" class="form-control" id="truckWidth" step="10" min="50">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">高 (cm)</label>
+          <input type="number" class="form-control" id="truckHeight" step="10" min="50">
+        </div>
+        <div class="form-group">
+          <label class="form-label">限重 (kg)</label>
+          <input type="number" class="form-control" id="truckMaxWeight" step="100" min="0">
+        </div>
+      </div>
+    </div>
+
+    <!-- 多批次快速添加 -->
+    <div class="sidebar-section">
+      <h3>📦 快速添加货物</h3>
+      <div class="form-group">
+        <label class="form-label">货物类型（应用到当前批次）</label>
+        <select class="form-control" id="cargoPreset"></select>
+      </div>
+
+      <div class="cargo-batch-container" id="cargoBatchContainer">
+        <div class="cargo-batch-card active" data-batch-number="1">
+          <div class="cargo-batch-title">
+            <div class="batch-title-name-row">
+              <span class="batch-title-name" data-role="batch-name">批次1</span><span>参数</span>
+              <button type="button" class="batch-title-edit" title="编辑批次名称" aria-label="编辑批次1名称">✎</button>
+            </div>
+            <button type="button" class="batch-remove-btn" title="删除此批次" aria-label="删除批次1" hidden>×</button>
+          </div>
+          <div class="form-row-3">
+            <div class="form-group">
+              <label class="form-label">长 (cm)</label>
+              <input type="number" class="form-control" id="cargoLength" data-field="length" step="1" min="1" value="120">
+            </div>
+            <div class="form-group">
+              <label class="form-label">宽 (cm)</label>
+              <input type="number" class="form-control" id="cargoWidth" data-field="width" step="1" min="1" value="80">
+            </div>
+            <div class="form-group">
+              <label class="form-label">高 (cm)</label>
+              <input type="number" class="form-control" id="cargoHeight" data-field="height" step="1" min="1" value="120">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">重量 (kg)</label>
+              <input type="number" class="form-control" id="cargoWeight" data-field="weight" step="1" min="0" value="450">
+            </div>
+            <div class="form-group">
+              <label class="form-label">数量</label>
+              <input type="number" class="form-control" id="cargoQty" data-field="qty" step="1" min="1">
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">颜色</label>
+              <input type="color" class="color-input" id="cargoColor" data-field="color" value="#1f9d72">
+            </div>
+            <div class="form-group batch-stackable-group">
+              <label class="checkbox-item">
+                <input type="checkbox" id="cargoStackable" data-field="stackable">
+                可堆叠
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="batch-action-row">
+        <button type="button" class="btn batch-add-btn" id="addCargoBatchBtn">＋ 增加批次货物</button>
+        <button type="button" class="btn batch-clear-data-btn" id="clearAllDataBtn">清除所有数据</button>
+      </div>
+      <button class="btn btn-primary btn-block" id="addCargoBtn">➕ 执行装载</button>
+    </div>
+
+    <!-- 批量导入 -->
+    <div class="sidebar-section">
+      <h3>📋 批量导入</h3>
+      <div class="file-upload-area">
+        <input type="file" id="cargoFileInput" accept=".csv,.xlsx,.xls" style="display:none;">
+        <button type="button" class="btn btn-block" id="fileUploadBtn">📁 导入文件 (CSV/Excel)</button>
+        <button type="button" class="template-download" id="downloadTemplateBtn">⬇ 下载批量导入模板</button>
+        <div class="file-hint" id="fileHint">支持CSV、Excel文件，列名包含长/宽/高/重量/数量</div>
+      </div>
+      <textarea class="bulk-input" id="bulkInput" placeholder="格式: 数量x 长x宽x高 重量 属性
+例如:
+10x 120x80x150 450kg stackable
+4x 240x120x90 800kg B
+6x 100x100x90 350kg"></textarea>
+      <div class="bulk-hint">
+        尺寸单位：厘米 (cm)，重量单位：千克 (kg)<br>
+        可选属性：stackable(可堆叠)、adr(危险品)
+      </div>
+      <button type="button" class="btn btn-block" id="bulkImportBtn" style="margin-top:8px;">📥 批量导入</button>
+    </div>
+
+  </aside>
+
+  <!-- 中间3D视图 -->
+  <main class="canvas-container" id="canvas3d">
+
+    <!-- 左上HUD -->
+    <div class="view-hud">
+      <h4 id="hudTruckName">FTL-40T</h4>
+      <div class="hud-row">
+        <span class="hud-label">货物数量</span>
+        <span class="hud-value" id="hudCargoCount">0 件</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-label">装载长度</span>
+        <span class="hud-value" id="hudLdm">0 / 1360 cm</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-label">总重量</span>
+        <span class="hud-value" id="hudWeight">0 kg</span>
+      </div>
+      <div class="hud-row">
+        <span class="hud-label">总体积</span>
+        <span class="hud-value" id="hudVolume">0 m³</span>
+      </div>
+    </div>
+
+    <!-- 底部视角控制 -->
+    <div class="view-controls">
+      <button class="view-btn active" data-view="iso">透视</button>
+      <button class="view-btn" data-view="front">前视</button>
+      <button class="view-btn" data-view="back">后视</button>
+      <button class="view-btn" data-view="side">侧视</button>
+      <button class="view-btn" data-view="top">俯视</button>
+    </div>
+
+    <!-- 右下角帮助 -->
+    <div class="help-hint">
+      <div>🖱️ 拖拽：水平移动 | Shift+拖拽：上下移动 | 右键：菜单</div>
+      <div>🔄 <kbd>R</kbd> 旋转 | <kbd>Del</kbd> 删除</div>
+      <div>📍 双击空白处添加货物</div>
+    </div>
+
+    <!-- 溢出状态 -->
+    <div id="overflowStatus" style="display:none;position:absolute;top:12px;left:12px;background:#fff5f5;color:#c53030;padding:8px 14px;border-radius:6px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+    </div>
+
+  </main>
+
+  <!-- 右侧信息面板 -->
+  <aside class="sidebar-right scrollable" id="mobileStatsPanel">
+
+    <!-- 综合评分 -->
+    <div class="sidebar-section score-section">
+      <div class="score-panel">
+        <div class="score-value" id="scoreValue">0</div>
+        <div class="score-label">算法评分 / 100（不含配送）</div>
+      </div>
+      <div class="score-row">
+        <span class="score-name">空间利用率</span>
+        <span class="score-points" id="scoreSpace">0/35</span>
+      </div>
+      <div class="score-row">
+        <span class="score-name">重量平衡</span>
+        <span class="score-points" id="scoreBalance">0/30</span>
+      </div>
+      <div class="score-row">
+        <span class="score-name">配送顺序</span>
+        <span class="score-points" id="scoreDelivery">未评估</span>
+      </div>
+      <div class="score-row">
+        <span class="score-name">堆叠效率</span>
+        <span class="score-points" id="scoreStacking">0/15</span>
+      </div>
+    </div>
+
+    <!-- 装载米：替代原轮压分布区域 -->
+    <div class="sidebar-section ldm-sidebar-section">
+      <div class="ldm-panel" id="ldmPanel">
+        <div class="ldm-header">
+          <span class="ldm-title">装载米</span>
+          <span class="ldm-used" id="ldmUsedText">0 of 0 cm</span>
+        </div>
+        <div class="ldm-remaining" id="ldmRemainingText">0 cm remaining</div>
+        <div class="ldm-bars">
+          <div class="ldm-bar-item">
+            <span class="ldm-bar-label">装载长度</span>
+            <div class="ldm-bar-track"><div class="ldm-bar-fill" id="ldmBarLength" style="width:0%"></div></div>
+            <span class="ldm-bar-value" id="ldmBarLengthPercent">0%</span>
+          </div>
+          <div class="ldm-bar-item">
+            <span class="ldm-bar-label">地面面积</span>
+            <div class="ldm-bar-track"><div class="ldm-bar-fill" id="ldmBarFloor" style="width:0%"></div></div>
+            <span class="ldm-bar-value" id="ldmBarFloorPercent">0%</span>
+          </div>
+          <div class="ldm-bar-item">
+            <span class="ldm-bar-label">载重量</span>
+            <div class="ldm-bar-track"><div class="ldm-bar-fill" id="ldmBarWeight" style="width:0%"></div></div>
+            <span class="ldm-bar-value" id="ldmBarWeightPercent">0%</span>
+          </div>
+          <div class="ldm-bar-item">
+            <span class="ldm-bar-label">容积</span>
+            <div class="ldm-bar-track"><div class="ldm-bar-fill" id="ldmBarVolume" style="width:0%"></div></div>
+            <span class="ldm-bar-value" id="ldmBarVolumePercent">0%</span>
+          </div>
+        </div>
+        <div class="ldm-meter">
+          <div class="ldm-meter-value" id="ldmMeterValue">0 / 0</div>
+          <div class="ldm-meter-label">使用的装载计量表</div>
+          <div class="ldm-meter-bar-track">
+            <div class="ldm-meter-bar-fill" id="ldmMeterBar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 状态警告 -->
+    <div class="sidebar-section">
+      <h3>⚠️ 装载状态</h3>
+      <div class="warning-list" id="warningList">
+        <div class="warning-item ok">✓ 状态良好</div>
+      </div>
+      <div id="optimizerStatus" class="optimizer-status">
+        点击"智能优化"自动排列货物
+      </div>
+    </div>
+
+    <!-- 货物列表 -->
+    <div class="sidebar-section">
+      <h3>📦 货物清单</h3>
+      <div class="cargo-list" id="cargoList">
+        <div style="font-size:12px;color:#a0aec0;text-align:center;padding:12px;">暂无货物</div>
+      </div>
+    </div>
+
+  </aside>
+
+</div>
+
+<button class="mobile-panel-backdrop" id="mobilePanelBackdrop" aria-label="关闭侧边面板"></button>
+
+<!-- 右键菜单 -->
+<div class="context-menu" id="contextMenu">
+  <div class="context-menu-item" id="ctxRotate">
+    🔄 旋转 (R)
+  </div>
+  <div class="context-menu-item" id="ctxDuplicate">
+    📋 复制
+  </div>
+  <div class="context-menu-item" id="ctxToFloor">
+    ⬇️ 放到底层
+  </div>
+  <div class="context-menu-item" id="ctxToTop">
+    ⬆️ 放到顶层
+  </div>
+  <div class="context-menu-divider"></div>
+  <div class="context-menu-item danger" id="ctxDelete">
+    🗑️ 删除 (Del)
+  </div>
+</div>
+
+<!-- 第三方库 -->
+<script src="libs/three.min.js"></script>
+<script src="libs/OrbitControls_umd.js"></script>
+<script src="libs/xlsx.full.min.js"></script>
+
+<!-- 应用脚本 -->
+<script src="js/config.js?v=6"></script>
+<script src="js/algorithm.js?v=40"></script>
+<script src="js/renderer.js?v=19"></script>
+<script src="js/app.js?v=46"></script>
+
+</body>
+</html>
