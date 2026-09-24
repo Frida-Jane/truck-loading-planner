@@ -754,27 +754,12 @@ const App = (function() {
   // ---------- 文件导入 ----------
 
   function downloadImportTemplate() {
-    if (typeof XLSX === 'undefined') {
-      showInputError('模板生成组件未加载，请重新打开页面后再试');
-      return;
-    }
-    const rows = [
-      ['名称', '长', '宽', '高', '重量', '数量', '可堆叠'],
-      ['欧洲托盘', 120, 80, 120, 20, 10, '是'],
-      ['纸箱', 60, 40, 40, 25, 10, '否'],
-      ['设备箱', 100, 100, 90, 35, 6, '否'],
-      ['', 80, 100, 120, 40, 10, '是'],
-      ['', 70, 60, 80, 45, 30, '是'],
-      ['', 50, 90, 110, 30, 10, '是']
-    ];
-    const workbook = XLSX.utils.book_new();
-    const worksheet = XLSX.utils.aoa_to_sheet(rows);
-    worksheet['!cols'] = [
-      { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
-      { wch: 10 }, { wch: 12 }
-    ];
-    XLSX.utils.book_append_sheet(workbook, worksheet, '货物导入模板');
-    XLSX.writeFile(workbook, '批量导入模板.xlsx', { compression: true });
+    const link = document.createElement('a');
+    link.href = './批量导入模板.xlsx';
+    link.download = '批量导入模板.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     els.fileHint.textContent = '✅ 批量导入模板已保存到浏览器下载文件夹';
   }
 
@@ -784,7 +769,7 @@ const App = (function() {
     height: ['height', '高', '高度', 'h', 'hgt', 'ht', 'hauteur'],
     weight: ['weight', '重量', '重', 'wt', 'poids', 'kg'],
     qty: ['qty', 'quantity', '数量', 'count', 'num', 'nombre', 'count'],
-    name: ['name', '名称', '货物名称', '名称', 'cargo', 'label'],
+    name: ['name', '名称', '货物名称', '包装类型', 'cargo', 'label'],
     stackable: ['stackable', '可堆叠', '堆叠', 'stack', 'B'],
     adr: ['adr', '危险品', 'dangerous', 'danger'],
     loadLast: ['loadlast', '最后装', 'last', 'lastload']
@@ -809,13 +794,20 @@ const App = (function() {
   }
 
   function parseImportBoolean(value) {
+    return parseImportBooleanValue(value) === true;
+  }
+
+  function parseImportBooleanValue(value) {
     if (value === true || value === 1) return true;
-    if (value === false || value === 0 || value == null) return false;
+    if (value === false || value === 0) return false;
+    if (value == null || String(value).trim() === '') return null;
     var normalized = String(value).trim().toLowerCase();
-    return [
+    if ([
       '1', 'true', 'yes', 'y', '是', '可堆叠', '可叠', '堆叠',
       'stackable', 'stack', 'b', '√', '对'
-    ].indexOf(normalized) >= 0;
+    ].indexOf(normalized) >= 0) return true;
+    if (['0', 'false', 'no', 'n', '否', '不可堆叠', '不可叠', '×', '错'].indexOf(normalized) >= 0) return false;
+    return null;
   }
 
   function parseFileRows(rows, headers) {
@@ -829,13 +821,35 @@ const App = (function() {
     var colAdr = findCol(headers, 'adr');
     var colLast = findCol(headers, 'loadLast');
 
+    var requiredColumns = [
+      { index: colLen, label: '长' },
+      { index: colWid, label: '宽' },
+      { index: colHgt, label: '高' },
+      { index: colWt, label: '重量' },
+      { index: colQty, label: '数量' },
+      { index: colStack, label: '可堆叠' }
+    ];
+    var missingHeaders = requiredColumns.filter(function(col) { return col.index < 0; }).map(function(col) { return col.label; });
+    if (missingHeaders.length) {
+      throw new Error('模板缺少必填列：' + missingHeaders.join('、'));
+    }
+
     var colors = ['#1f9d72', '#2f80ed', '#9b7bd8', '#d9a22b', '#b86b2b', '#ed8936', '#38a169', '#dd6b20'];
     var newPallets = [];
+    var rowErrors = [];
     var batchIdx = 0;
 
     for (var r = 0; r < rows.length; r++) {
       var row = rows[r];
-      if (!row || row.length === 0) continue;
+      if (!row || row.length === 0 || !row.some(function(value) { return String(value == null ? '' : value).trim() !== ''; })) continue;
+
+      var missingFields = requiredColumns.filter(function(col) {
+        return String(row[col.index] == null ? '' : row[col.index]).trim() === '';
+      }).map(function(col) { return col.label; });
+      if (missingFields.length) {
+        rowErrors.push('第' + (r + 2) + '行缺少必填项：' + missingFields.join('、'));
+        continue;
+      }
 
       var length = colLen >= 0 ? parseFloat(row[colLen]) : NaN;
       var width = colWid >= 0 ? parseFloat(row[colWid]) : NaN;
@@ -844,17 +858,28 @@ const App = (function() {
       var qty = colQty >= 0 ? Number(row[colQty]) : 1;
 
       // 所有导入入口使用与手工添加一致的输入边界
-      if (![length, width, height, weight, qty].every(Number.isFinite)) continue;
-      if (length <= 0 || width <= 0 || height <= 0 || weight < 0 || !Number.isInteger(qty) || qty < 1) continue;
+      if (![length, width, height, weight, qty].every(Number.isFinite)) {
+        rowErrors.push('第' + (r + 2) + '行的长、宽、高、重量或数量不是有效数字');
+        continue;
+      }
+      if (length <= 0 || width <= 0 || height <= 0 || weight < 0 || !Number.isInteger(qty) || qty < 1) {
+        rowErrors.push('第' + (r + 2) + '行数据无效：长宽高须大于0，重量不能为负数，数量须为正整数');
+        continue;
+      }
 
-      var cargoName = (colName >= 0 && row[colName]) ? String(row[colName]).trim() : ('货物' + (batchIdx + 1));
+      var stackableValue = parseImportBooleanValue(row[colStack]);
+      if (stackableValue === null) {
+        rowErrors.push('第' + (r + 2) + '行“可堆叠”必须选择“是”或“否”');
+        continue;
+      }
+
+      var cargoName = (colName >= 0 && String(row[colName] == null ? '' : row[colName]).trim())
+        ? String(row[colName]).trim()
+        : ('批次' + (r + 2));
       var color = colors[batchIdx % colors.length];
       var batchId = makeUuid();
 
-      var stackable = false;
-      if (colStack >= 0) {
-        stackable = parseImportBoolean(row[colStack]);
-      }
+      var stackable = stackableValue;
       var adr = false;
       if (colAdr >= 0) {
         var av = String(row[colAdr]).trim().toLowerCase();
@@ -881,7 +906,7 @@ const App = (function() {
       }
       batchIdx++;
     }
-    return newPallets;
+    return { pallets: newPallets, rowErrors: rowErrors };
   }
 
   function handleFileImport(e) {
@@ -926,8 +951,10 @@ const App = (function() {
           throw new Error('无法解析此文件格式，请使用CSV或Excel');
         }
 
-        var newPallets = parseFileRows(rows, headers);
+        var parsed = parseFileRows(rows, headers);
+        var newPallets = parsed.pallets;
         if (!newPallets.length) {
+          if (parsed.rowErrors.length) throw new Error(parsed.rowErrors.join('；'));
           throw new Error('未找到有效数据，请确保列名包含：长、宽、高、重量、数量');
         }
 
@@ -938,8 +965,11 @@ const App = (function() {
         captureInitialPlacement();
         updateAll();
 
-        els.fileHint.textContent = '✅ ' + file.name + ' 导入成功！共 ' + newPallets.length + ' 件货物';
-        els.optimizerStatus.textContent = optimizationStatusText(result, `文件导入成功，添加了 ${newPallets.length} 件货物`);
+        var skippedMessage = parsed.rowErrors.length
+          ? '；已跳过 ' + parsed.rowErrors.length + ' 行：' + parsed.rowErrors.join('；')
+          : '';
+        els.fileHint.textContent = (parsed.rowErrors.length ? '⚠️ ' : '✅ ') + file.name + ' 导入完成，共添加 ' + newPallets.length + ' 件货物' + skippedMessage;
+        els.optimizerStatus.textContent = optimizationStatusText(result, `文件导入完成，添加了 ${newPallets.length} 件货物${skippedMessage}`);
         els.optimizerStatus.classList.add('working');
         setTimeout(function() {
           els.optimizerStatus.classList.remove('working');
@@ -952,7 +982,7 @@ const App = (function() {
         setTimeout(function() {
           els.optimizerStatus.classList.remove('working');
           els.optimizerStatus.textContent = '点击"智能优化"自动排列货物';
-          els.fileHint.textContent = '支持CSV、Excel文件，列名包含长/宽/高/重量/数量';
+          els.fileHint.textContent = '支持CSV、Excel文件；带 * 的长/宽/高/重量/数量/可堆叠为必填项';
         }, 5000);
       }
       // Reset input so same file can be selected again
