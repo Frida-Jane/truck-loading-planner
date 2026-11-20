@@ -1708,28 +1708,37 @@ const App = (function() {
       { title: 'Loading Plan Report', disclaimer: 'This plan is for reference only. The carrier’s actual loading takes precedence.', result: 'Loading result', complete: 'Fully loaded', vehicle: 'Vehicle information', cargo: 'Cargo information', ldm: 'Loading metres', loaded: `${insideCargo.length} inside · ${outsideCount} outside`, yes: 'Yes', no: 'No', weight: 'Total weight', capacity: 'Payload limit', kingpin: 'Kingpin limit', tridem: 'Tridem limit', images: 'Loading views and load distribution', plan: 'Lastverteilungsplan · Load distribution plan' },
       { title: 'Ladeplan-Bericht', disclaimer: 'Dieser Plan dient nur zur Orientierung. Maßgeblich ist die tatsächliche Beladung durch den Frachtführer.', result: 'Ladeergebnis', complete: 'Vollständig geladen', vehicle: 'Fahrzeuginformationen', cargo: 'Ladungsinformationen', ldm: 'Lademeter', loaded: `${insideCargo.length} innen · ${outsideCount} außen`, yes: 'Ja', no: 'Nein', weight: 'Gesamtgewicht', capacity: 'Nutzlastgrenze', kingpin: 'Königszapfengrenze', tridem: 'Dreiachsaggregat-Grenze', images: 'Ladeansichten und Lastverteilung', plan: 'Lastverteilungsplan' }
     ];
+    const vehicleNameTranslations = {
+      '小型厢式货车(Van)': ['小型厢式货车(Van)', 'Small van', 'Kleiner Kastenwagen'],
+      '中型厢式货车(Van)': ['中型厢式货车(Van)', 'Medium van', 'Mittlerer Kastenwagen'],
+      '大型厢式货车(Van)/3.5T': ['大型厢式货车(Van)/3.5T', 'Large van / 3.5 t', 'Großer Kastenwagen / 3,5 t'],
+      'FTL-直达厢式车 Large VAN (4m)': ['FTL-直达厢式车 Large VAN (4m)', 'FTL direct large van (4 m)', 'FTL-Direktfahrt großer Kastenwagen (4 m)'],
+      'FTL-直达侧帘车 Curtain VAN(4.8m)': ['FTL-直达侧帘车 Curtain VAN(4.8m)', 'FTL direct curtain van (4.8 m)', 'FTL-Direktfahrt Curtainsider (4,8 m)'],
+      '中型卡车(7.5t，6.1m)': ['中型卡车(7.5t，6.1m)', 'Medium truck (7.5 t, 6.1 m)', 'Mittlerer Lkw (7,5 t, 6,1 m)'],
+      '中型卡车(12t，7.2m)': ['中型卡车(12t，7.2m)', 'Medium truck (12 t, 7.2 m)', 'Mittlerer Lkw (12 t, 7,2 m)'],
+      '40T半挂车(13.6m，Semi-trailer)': ['40T半挂车(13.6m，Semi-trailer)', '40 t semi-trailer (13.6 m)', '40-t-Sattelauflieger (13,6 m)']
+    };
     const maxWeight = Number(state.truck.maxWeight || 0).toLocaleString();
     const chapters = chapterCopy.map((copy, language) => {
       const complete = outsideCount === 0;
       const completeLabel = language === 0 ? (complete ? copy.yes : `${copy.no}，${outsideCount} 件在车外`) : language === 1 ? (complete ? copy.yes : `${copy.no}, ${outsideCount} outside`) : (complete ? copy.yes : `${copy.no}, ${outsideCount} außerhalb`);
-      const truckHeading = language === 0 ? '车辆信息' : language === 1 ? 'Vehicle information' : 'Fahrzeuginformationen';
       const loadResult = language === 0 ? '装载结果' : language === 1 ? 'Loading result' : 'Ladeergebnis';
       const cargoTableHtml = cargoTable(language);
       const supportLimits = state.truck.kind === 'trailer'
         ? `<p>${copy.kingpin}: ${Number(state.truck.kingpinLimit || 0).toLocaleString()} kg · ${copy.tridem}: ${Number(state.truck.tridemLimit || 0).toLocaleString()} kg</p>`
         : '';
       const countTitle = ['件数（车内 / 总数）', 'Pieces (inside / total)', 'Stück (innen / gesamt)'][language];
-      const vehicleName = escapeReportText(state.truck.name);
+      const vehicleName = escapeReportText(vehicleNameTranslations[state.truck.name]?.[language] || state.truck.name);
       return `<section class="chapter lang-${language}">
         <div class="notice">${copy.disclaimer}</div><h1>${copy.title}</h1>
         <h2>${loadResult}</h2><div class="summary-grid"><div><b>${copy.complete}</b><span>${completeLabel}</span></div><div><b>${copy.ldm}</b><span>${ldmByLanguage[language]}</span></div><div><b>${countTitle}</b><span>${insideCargo.length} / ${state.pallets.length}</span></div></div>
-        <h2>${truckHeading}</h2><table class="info"><tbody><tr><th>${vehicleName}</th><td>${truckDimensions}</td></tr><tr><th>${copy.weight} / ${copy.capacity}</th><td>${Number(stats.totalWeight || 0).toLocaleString()} kg / ${maxWeight} kg</td></tr></tbody></table>${supportLimits}
+        <h2>${copy.vehicle}</h2><table class="info"><tbody><tr><th>${vehicleName}</th><td>${truckDimensions}</td></tr><tr><th>${copy.weight} / ${copy.capacity}</th><td>${Number(stats.totalWeight || 0).toLocaleString()} kg / ${maxWeight} kg</td></tr></tbody></table>${supportLimits}
         <h2>${copy.cargo}</h2>${cargoTableHtml}
       </section>`;
     }).join('');
     const imagePages = viewImages.map((image, index) => `<section class="image-page"><h2>${image.title.map(text => `<span>${text}</span>`).join(' · ')}</h2><img src="${image.data}" alt="${image.title[1]}"></section>`).join('');
     const planImage = els.loadDistributionCanvas.toDataURL('image/png');
-    const planPage = `<section class="image-page"><h2>${chapterCopy.map(copy => copy.plan).join(' · ')}</h2><img src="${planImage}" alt="Lastverteilungsplan load distribution plan"></section>`;
+    const planPage = `<section class="image-page"><h2>${chapterCopy.map(copy => copy.plan).join(' · ')}</h2><p>牵引销 / Kingpin / Königszapfen · 三轴组重心 / Tridem-group center / Schwerpunkt des Dreiachsaggregats · 纵向货物重量密度 / Longitudinal cargo weight density / Längsverteilung des Ladungsgewichts</p><img src="${planImage}" alt="Lastverteilungsplan load distribution plan"></section>`;
     const date = new Date().toLocaleDateString('en-CA');
     const reportHtml = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Loading report ${date}</title><style>
       @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font:13px/1.5 Arial,"Microsoft YaHei",sans-serif;color:#202833;margin:0}.chapter{page-break-after:always}.notice{border:1px solid #b84f4f;background:#fff3f1;color:#802c2c;padding:12px 16px;font-size:16px;font-weight:700;margin-bottom:14px}h1{font-size:25px;margin:0 0 12px}h2{font-size:16px;margin:15px 0 7px;color:#174b59}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-grid div{border:1px solid #d7e0e5;border-radius:6px;padding:10px}.summary-grid b,.summary-grid span{display:block}.summary-grid span{margin-top:5px;font-size:16px}table{width:100%;border-collapse:collapse;font-size:11px}td,th{border:1px solid #cdd6dc;padding:6px 8px;text-align:left}thead th{background:#eaf0f2}.info th{width:27%;background:#f3f6f7}.color-chip{display:inline-block;width:13px;height:13px;border:1px solid #777;vertical-align:middle;margin-right:6px}.image-page{page-break-before:always;height:180mm;display:flex;flex-direction:column;align-items:center;justify-content:center}.image-page h2{width:100%;text-align:center;font-size:17px}.image-page img{max-width:100%;max-height:155mm;object-fit:contain}.print-controls{position:fixed;right:16px;top:12px;z-index:5}.print-controls button{border:0;border-radius:5px;background:#087e8b;color:white;padding:10px 14px;font-size:14px;cursor:pointer}@media print{.print-controls{display:none}}
