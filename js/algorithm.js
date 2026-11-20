@@ -189,6 +189,8 @@ const Optimizer = (function() {
   }
 
   function calculateWheelStress(pallets, truck) {
+    if (truck.kind === 'trailer') return calculateTrailerSupportLoads(pallets, truck);
+
     const wheelZ = getWheelPositions(truck);
     const positions = wheelZ
       .map((z, index) => ({ z: Number(z), index, load: 0 }))
@@ -207,6 +209,37 @@ const Optimizer = (function() {
       label: wheelStressLabel(item, index, positions.length, truck),
       capacity,
       percent: (item.load / capacity) * 100
+    }));
+  }
+
+  // 半挂车货物经牵引销与三轴组两个支点承受，按货物重心使用静力杠杆反力。
+  // 负反力保留为诊断信号；它表示货物重心落在支点区间外，空车质量未纳入本模型。
+  function calculateTrailerSupportLoads(pallets, truck) {
+    const axles = truck.axles || [];
+    const pin = axles.find(axle => axle.label === '牵引销') || axles[0];
+    const tridem = axles.find(axle => axle.label === '后桥组') || axles[1];
+    if (!pin || !tridem || !(Number(tridem.z) > Number(pin.z))) return [];
+
+    const pinZ = Number(pin.z);
+    const tridemZ = Number(tridem.z);
+    const span = tridemZ - pinZ;
+    let pinLoad = 0;
+    let tridemLoad = 0;
+    pallets.filter(p => !isPalletOutsideTruck(p, truck)).forEach(pallet => {
+      const weight = Number(pallet.weight) || 0;
+      const centerZ = Number(pallet.z) || 0;
+      const rearReaction = weight * (centerZ - pinZ) / span;
+      tridemLoad += rearReaction;
+      pinLoad += weight - rearReaction;
+    });
+
+    const axleCount = (truck.wheelZ || []).filter(z => Number(z) >= pinZ).length || 3;
+    return [
+      { z: pinZ, label: '牵引销', load: pinLoad, capacity: Number(truck.kingpinLimit) || 0, supportType: 'kingpin' },
+      { z: tridemZ, label: '三轴组', load: tridemLoad, capacity: Number(truck.tridemLimit) || 0, supportType: 'tridem', axleCount, estimatedPerAxle: tridemLoad / axleCount }
+    ].map(item => ({
+      ...item,
+      percent: item.capacity > 0 ? item.load / item.capacity * 100 : null
     }));
   }
 
@@ -255,25 +288,15 @@ const Optimizer = (function() {
   }
 
   function calculateDistributionScore(pallets, truck) {
-    const positions = loadSupportPositions(truck);
-    const totalWeight = pallets.reduce((sum, p) => sum + p.weight, 0);
-    if (!positions.length || !totalWeight) return 86;
-
-    const posCopy = positions.map(p => ({ ...p, load: 0 }));
-    pallets.forEach(pallet => {
-      distributePalletLoadToWheels(posCopy, pallet.z, pallet.weight);
-    });
-
-    const idealLoad = totalWeight / posCopy.length;
-    const averageDeviation = posCopy.reduce((sum, item) => {
-      return sum + Math.abs(item.load - idealLoad);
-    }, 0) / posCopy.length;
-    const deviationPenalty = (averageDeviation / Math.max(1, totalWeight)) * 170;
-    const capacity = Math.max(1, truck.maxWeight / posCopy.length);
-    const maxPercent = Math.max(...posCopy.map(item => (item.load / capacity) * 100));
-    const overloadPenalty = Math.max(0, maxPercent - 80) * 1.5;
-
-    return clampNumber(100 - deviationPenalty - overloadPenalty, 0, 100);
+    const totalWeight = pallets.filter(p => !isPalletOutsideTruck(p, truck))
+      .reduce((sum, p) => sum + Number(p.weight || 0), 0);
+    if (!totalWeight) return 86;
+    const percentages = calculateWheelStress(pallets, truck)
+      .map(item => item.percent).filter(Number.isFinite);
+    if (!percentages.length) return 86;
+    const maxPercent = Math.max(...percentages);
+    const spread = maxPercent - Math.min(...percentages);
+    return clampNumber(100 - Math.max(0, maxPercent - 85) * 2.2 - spread * 0.28, 0, 100);
   }
 
   // ---------- 评分系统 ----------
@@ -3087,6 +3110,12 @@ const Optimizer = (function() {
 
     // 轮压检测
     const wheelStress = calculateWheelStress(pallets, truck);
+    if (truck.kind === 'trailer' && wheelStress.some(item => item.load < -0.001)) {
+      warnings.push({
+        type: 'warning',
+        text: '部分货物重心落在牵引销前方，杠杆模型出现负向轴组载荷贡献；当前未计入半挂车自重和牵引车轴荷，需按车辆 Lastverteilungsplan 复核'
+      });
+    }
     wheelStress.forEach(ws => {
       if (ws.percent >= 100) {
         warnings.push({
@@ -3146,3 +3175,4 @@ const Optimizer = (function() {
     capturePlacementMap, restorePlacementMap
   };
 })();
+

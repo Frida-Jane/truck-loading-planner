@@ -142,7 +142,11 @@ const truckTemplates = {
       { label: "牵引销", z: 1.25 },
       { label: "后桥组", z: 10.85 }
     ],
-    wheelZ: [10.15, 10.85, 11.55]
+    wheelZ: [10.15, 10.85, 11.55],
+    // 牵引销限值是示例值，必须按牵引车/鞍座与半挂铭牌核对；
+    // 三轴组 21t 对应本模板 0.7m 轴距的参考上限，运营地法规优先。
+    kingpinLimit: 11500,
+    tridemLimit: 21000
   },
 };
 
@@ -183,3 +187,4 @@ function formatKg(kg) {
 function snap(value, step = 0.001) {
   return Math.round(value / step) * step;
 }
+

@@ -73,6 +73,13 @@ const App = (function() {
       truckWidth: document.getElementById('truckWidth'),
       truckHeight: document.getElementById('truckHeight'),
       truckMaxWeight: document.getElementById('truckMaxWeight'),
+      truckKingpinLimit: document.getElementById('truckKingpinLimit'),
+      truckTridemLimit: document.getElementById('truckTridemLimit'),
+      trailerSupportLimits: document.getElementById('trailerSupportLimits'),
+      loadPlanSection: document.getElementById('loadPlanSection'),
+      loadDistributionCanvas: document.getElementById('loadDistributionCanvas'),
+      loadPlanSupportSummary: document.getElementById('loadPlanSupportSummary'),
+      exportLoadPlanBtn: document.getElementById('exportLoadPlanBtn'),
 
       // 货物
       cargoPreset: document.getElementById('cargoPreset'),
@@ -360,6 +367,7 @@ const App = (function() {
 
     // 导出
     els.exportBtn.addEventListener('click', exportScreenshot);
+    els.exportLoadPlanBtn.addEventListener('click', exportLoadDistributionPlan);
 
     // 窄屏侧栏
     els.mobileConfigBtn.addEventListener('click', () => toggleMobilePanel('config'));
@@ -367,7 +375,8 @@ const App = (function() {
     els.mobilePanelBackdrop.addEventListener('click', closeMobilePanels);
 
     // 自定义尺寸
-    [els.truckLength, els.truckWidth, els.truckHeight, els.truckMaxWeight].forEach(el => {
+    [els.truckLength, els.truckWidth, els.truckHeight, els.truckMaxWeight,
+      els.truckKingpinLimit, els.truckTridemLimit].forEach(el => {
       el.addEventListener('change', updateCustomTruck);
     });
 
@@ -598,6 +607,9 @@ const App = (function() {
     els.truckWidth.value = Math.round(state.truck.width * 100);
     els.truckHeight.value = Math.round(state.truck.height * 100);
     els.truckMaxWeight.value = state.truck.maxWeight;
+    els.truckKingpinLimit.value = state.truck.kingpinLimit || '';
+    els.truckTridemLimit.value = state.truck.tridemLimit || '';
+    els.trailerSupportLimits.hidden = state.truck.kind !== 'trailer';
 
     // 车型变化后必须重新规划，逐件 clamp 会把货物挤到同一坐标并制造重叠
     Renderer.renderTruck(state.truck);
@@ -610,13 +622,18 @@ const App = (function() {
     const widthCm = parseFloat(els.truckWidth.value);
     const heightCm = parseFloat(els.truckHeight.value);
     const maxWeight = parseFloat(els.truckMaxWeight.value);
+    const kingpinLimit = state.truck.kind === 'trailer' ? parseFloat(els.truckKingpinLimit.value) : state.truck.kingpinLimit;
+    const tridemLimit = state.truck.kind === 'trailer' ? parseFloat(els.truckTridemLimit.value) : state.truck.tridemLimit;
     if (![lengthCm, widthCm, heightCm, maxWeight].every(Number.isFinite) ||
-        lengthCm <= 0 || widthCm <= 0 || heightCm <= 0 || maxWeight < 0) {
-      showInputError('车厢长、宽、高必须大于 0，限重不得小于 0');
+        lengthCm <= 0 || widthCm <= 0 || heightCm <= 0 || maxWeight < 0 ||
+        (state.truck.kind === 'trailer' && (![kingpinLimit, tridemLimit].every(Number.isFinite) || kingpinLimit <= 0 || tridemLimit <= 0))) {
+      showInputError('车厢尺寸必须大于 0；限重及半挂支点限值必须为有效正数');
       els.truckLength.value = Math.round(state.truck.length * 100);
       els.truckWidth.value = Math.round(state.truck.width * 100);
       els.truckHeight.value = Math.round(state.truck.height * 100);
       els.truckMaxWeight.value = state.truck.maxWeight;
+      els.truckKingpinLimit.value = state.truck.kingpinLimit || '';
+      els.truckTridemLimit.value = state.truck.tridemLimit || '';
       return;
     }
 
@@ -624,6 +641,10 @@ const App = (function() {
     state.truck.width = widthCm / 100;
     state.truck.height = heightCm / 100;
     state.truck.maxWeight = maxWeight;
+    if (state.truck.kind === 'trailer') {
+      state.truck.kingpinLimit = kingpinLimit;
+      state.truck.tridemLimit = tridemLimit;
+    }
 
     Renderer.renderTruck(state.truck);
     repackForCurrentTruck('车厢尺寸已更新');
@@ -1641,6 +1662,7 @@ const App = (function() {
     updateWarnings(warnings);
     updateCargoList();
     updateOverflowStatus(stats);
+    updateLoadDistributionPlan(stats);
 
     // 重新渲染3D
     Renderer.renderCargo(state.pallets, state.selectedId);
@@ -1656,6 +1678,131 @@ const App = (function() {
     updateScorePanel(stats);
     updateWarnings(warnings);
     updateOverflowStatus(stats);
+    updateLoadDistributionPlan(stats);
+  }
+
+  function updateLoadDistributionPlan(stats) {
+    if (state.truck.kind !== 'trailer') {
+      els.loadPlanSection.hidden = true;
+      return;
+    }
+    els.loadPlanSection.hidden = false;
+    const canvas = els.loadDistributionCanvas;
+    const width = Math.max(260, canvas.clientWidth || 360);
+    const height = 160;
+    const pixelRatio = Math.max(2, window.devicePixelRatio || 1);
+    if (canvas.width !== Math.round(width * pixelRatio) || canvas.height !== Math.round(height * pixelRatio)) {
+      canvas.width = Math.round(width * pixelRatio);
+      canvas.height = Math.round(height * pixelRatio);
+    }
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = '#171b20';
+    ctx.fillRect(0, 0, width, height);
+
+    const left = 42, right = width - 14, top = 37, base = 105;
+    const plotWidth = right - left;
+    const length = state.truck.length;
+    const toX = z => left + (z / Math.max(length, 0.01)) * plotWidth;
+    const loaded = state.pallets.filter(p => !Optimizer.isPalletOutsideTruck(p, state.truck));
+    const binCount = Math.max(1, Math.ceil(length / 0.5));
+    const bins = Array(binCount).fill(0);
+    loaded.forEach(pallet => {
+      const rect = Optimizer.rectFor(pallet);
+      const start = Math.max(0, rect.minZ);
+      const end = Math.min(length, rect.maxZ);
+      const span = Math.max(0.001, end - start);
+      bins.forEach((_, index) => {
+        const binStart = index * length / binCount;
+        const binEnd = (index + 1) * length / binCount;
+        const overlap = Math.max(0, Math.min(end, binEnd) - Math.max(start, binStart));
+        if (overlap) bins[index] += Number(pallet.weight || 0) * overlap / span;
+      });
+    });
+    const maxBin = Math.max(1, ...bins);
+    ctx.strokeStyle = '#566170';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, base);
+    ctx.lineTo(right, base);
+    ctx.stroke();
+    const binWidth = plotWidth / binCount;
+    bins.forEach((weight, index) => {
+      const barHeight = (weight / maxBin) * 52;
+      ctx.fillStyle = weight ? '#26b89a' : '#28313a';
+      ctx.fillRect(left + index * binWidth + 1, base - barHeight, Math.max(1, binWidth - 2), barHeight);
+    });
+
+    const supports = Optimizer.calculateWheelStress(loaded, state.truck);
+    const marker = (z, label, color, markerTop = top) => {
+      const x = toX(z);
+      ctx.save();
+      ctx.setLineDash([5, 4]);
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x, markerTop);
+      ctx.lineTo(x, base + 18);
+      ctx.stroke();
+      ctx.restore();
+      ctx.fillStyle = color;
+      ctx.font = 'bold 9px sans-serif';
+      ctx.textAlign = x > right - 95 ? 'right' : 'left';
+      ctx.fillText(label, x + (x > right - 86 ? -4 : 4), markerTop - 5);
+    };
+    const pin = (state.truck.axles || []).find(a => a.label === '牵引销');
+    const tridem = (state.truck.axles || []).find(a => a.label === '后桥组');
+    if (pin) marker(pin.z, '牵引销', '#f0b35a');
+    if (tridem) marker(tridem.z, '三轴组重心', '#6ca8ff');
+    (state.truck.wheelZ || []).forEach(z => {
+      const x = toX(z);
+      ctx.fillStyle = '#a78bfa';
+      ctx.beginPath();
+      ctx.arc(x, base + 3, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    ctx.fillStyle = '#9aa8b8';
+    ctx.font = '9px sans-serif';
+    ctx.textAlign = 'center';
+    const ticks = 5;
+    for (let i = 0; i <= ticks; i++) {
+      const z = length * i / ticks;
+      const x = toX(z);
+      ctx.fillText(`${z.toFixed(1)}m`, x, base + 20);
+      ctx.strokeStyle = '#34404b';
+      ctx.beginPath();
+      ctx.moveTo(x, base);
+      ctx.lineTo(x, base + 4);
+      ctx.stroke();
+    }
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#cbd5e1';
+    ctx.font = '10px sans-serif';
+    ctx.fillText(`纵向货物重量密度 · 峰值 ${Math.round(maxBin / (length / binCount))} kg/m`, left, 16);
+
+    els.loadPlanSupportSummary.innerHTML = supports.map(item => {
+      const percent = Number.isFinite(item.percent) ? item.percent : 0;
+      const reverseContribution = item.load < -0.001;
+      const statusClass = reverseContribution ? 'warning' : percent >= 100 ? 'danger' : percent >= 85 ? 'warning' : 'ok';
+      const value = `${Math.round(item.load).toLocaleString()} / ${Math.round(item.capacity).toLocaleString()} kg`;
+      const percentLabel = reverseContribution
+        ? `反向载荷贡献 ${Math.abs(percent).toFixed(1)}%`
+        : `${Math.round(percent)}%`;
+      const sub = item.supportType === 'tridem'
+        ? `组内均分估算 ${Math.round(item.estimatedPerAxle).toLocaleString()} kg/轴`
+        : `货物传递反力 · ${item.z.toFixed(2)}m`;
+      return `<div class="load-plan-support ${statusClass}"><div><b>${item.label}</b><small>${sub}</small></div><span>${value} · ${percentLabel}</span><div class="load-plan-progress"><i style="width:${clampNumber(percent, 0, 100)}%"></i></div></div>`;
+    }).join('');
+  }
+
+  function exportLoadDistributionPlan() {
+    if (state.truck.kind !== 'trailer') return;
+    updateAll();
+    const link = document.createElement('a');
+    link.download = 'Lastverteilungsplan-载荷分布图.png';
+    link.href = els.loadDistributionCanvas.toDataURL('image/png');
+    link.click();
   }
 
   function updateHud(stats) {
@@ -1902,3 +2049,4 @@ const App = (function() {
 
 // 页面加载完成后初始化
 App.init();
+

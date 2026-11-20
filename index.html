@@ -1,11 +1,11 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>卡车装载规划器 - 3D智能配载工具</title>
   <link rel="icon" href="data:,">
-<link rel="stylesheet" href="css/style.css?v=16">
+<link rel="stylesheet" href="css/style.css?v=17">
 </head>
 <body>
 
@@ -61,6 +61,19 @@
           <label class="form-label">限重 (kg)</label>
           <input type="number" class="form-control" id="truckMaxWeight" step="100" min="0">
         </div>
+      </div>
+      <div id="trailerSupportLimits" class="support-limit-fields" hidden>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">牵引销限值 (kg)</label>
+            <input type="number" class="form-control" id="truckKingpinLimit" min="1" step="100">
+          </div>
+          <div class="form-group">
+            <label class="form-label">三轴组限值 (kg)</label>
+            <input type="number" class="form-control" id="truckTridemLimit" min="1" step="100">
+          </div>
+        </div>
+        <div class="support-limit-note">示例参考值；请按牵引车/鞍座、半挂车铭牌及运营地法规核实。</div>
       </div>
     </div>
 
@@ -263,6 +276,17 @@
       </div>
     </div>
 
+    <div class="sidebar-section load-plan-section" id="loadPlanSection" hidden>
+      <div class="load-plan-heading">
+        <h3>⚖️ Lastverteilungsplan</h3>
+        <button type="button" class="small-action-btn" id="exportLoadPlanBtn">导出 PNG</button>
+      </div>
+      <div class="load-plan-caption">载荷分布图 · 货物纵向分布与支点反力估算（不含车辆自重）</div>
+      <canvas id="loadDistributionCanvas" width="1000" height="310" aria-label="半挂车载荷分布图"></canvas>
+      <div id="loadPlanSupportSummary" class="load-plan-support-summary"></div>
+      <div class="load-plan-footnote">计算采用牵引销—三轴组两支点杠杆模型；三轴组反力按组显示，单轴值仅为均分估算，实际载荷受悬架、车架及车辆自重影响。</div>
+    </div>
+
     <!-- 状态警告 -->
     <div class="sidebar-section">
       <h3>⚠️ 装载状态</h3>
@@ -315,9 +339,10 @@
 
 <!-- 应用脚本 -->
 <script src="js/config.js?v=6"></script>
-<script src="js/algorithm.js?v=40"></script>
+<script src="js/algorithm.js?v=41"></script>
 <script src="js/renderer.js?v=19"></script>
-<script src="js/app.js?v=46"></script>
+<script src="js/app.js?v=49"></script>
 
 </body>
 </html>
+
