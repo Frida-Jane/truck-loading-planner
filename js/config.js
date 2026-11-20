@@ -155,7 +155,7 @@ const cargoPresets = {
   euro: { label: "欧洲托盘", length: 1.2, width: 0.8, height: 1.2, weight: 450, color: "#1f9d72", stackable: true },
   uk: { label: "英国托盘", length: 1.2, width: 1.0, height: 1.2, weight: 520, color: "#2f80ed", stackable: true },
   half: { label: "半托盘", length: 0.8, width: 0.6, height: 0.9, weight: 220, color: "#39a66a", stackable: true },
-  industrial: { label: "工业托盘", length: 1.2, width: 1.2, height: 1.1, weight: 620, color: "#d9a22b", stackable: true },
+  industrial: { label: "工业托盘", length: 1.2, width: 1.0, height: 1.1, weight: 620, color: "#d9a22b", stackable: true },
   carton: { label: "纸箱", length: 0.6, width: 0.4, height: 0.4, weight: 25, color: "#9b7bd8", stackable: true },
   crate: { label: "板条箱", length: 1.0, width: 1.0, height: 0.9, weight: 350, color: "#b86b2b", stackable: true },
   chep: { label: "CHEP托盘", length: 1.2, width: 1.0, height: 1.25, weight: 550, color: "#2268b8", stackable: true },

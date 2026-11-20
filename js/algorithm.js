@@ -361,7 +361,12 @@ const Optimizer = (function() {
     const totalWeight = loaded.reduce((sum, p) => sum + p.weight, 0);
     const wheelStress = calculateWheelStress(loaded, truck);
     const loadBounds = calculateBoundsForPallets(loaded);
-    const loadingMetres = truck.width ? palletFloor / truck.width : 0;
+    // Standard loading metres: footprint area divided by the 2.4 m reference width.
+    // Only ground-contact cargo contributes, so stacked pieces do not double-count floor usage.
+    const loadingMetres = loaded.reduce((sum, p) => {
+      if ((p.baseY || 0) > 0.01) return sum;
+      return sum + (p.length * p.width) / 2.4;
+    }, 0);
     const usedLoadLength = loadBounds ? Math.max(0, loadBounds.maxZ - loadBounds.minZ) : 0;
     const floorShare = truckFloor ? (palletFloor / truckFloor) * 100 : 0;
     const volumeShare = truckVolume ? (palletVolume / truckVolume) * 100 : 0;

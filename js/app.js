@@ -109,6 +109,7 @@ const App = (function() {
       undoBtn: document.getElementById('undoBtn'),
       redoBtn: document.getElementById('redoBtn'),
       exportBtn: document.getElementById('exportBtn'),
+      exportPdfBtn: document.getElementById('exportPdfBtn'),
       mobileConfigBtn: document.getElementById('mobileConfigBtn'),
       mobileStatsBtn: document.getElementById('mobileStatsBtn'),
       mobileConfigPanel: document.getElementById('mobileConfigPanel'),
@@ -367,6 +368,7 @@ const App = (function() {
 
     // 导出
     els.exportBtn.addEventListener('click', exportScreenshot);
+    els.exportPdfBtn.addEventListener('click', exportLoadingReportPdf);
     els.exportLoadPlanBtn.addEventListener('click', exportLoadDistributionPlan);
 
     // 窄屏侧栏
@@ -1650,6 +1652,93 @@ const App = (function() {
     link.click();
   }
 
+  function exportLoadingReportPdf() {
+    const reportWindow = window.open('', '_blank');
+    if (!reportWindow) {
+      alert('浏览器阻止了报告窗口，请允许此页面打开弹出窗口后重试。');
+      return;
+    }
+
+    updateAll();
+    const views = [
+      { id: 'iso', title: ['透视图', 'Perspective', 'Perspektive'] },
+      { id: 'front', title: ['前视图', 'Front view', 'Vorderansicht'] },
+      { id: 'back', title: ['后视图', 'Rear view', 'Rückansicht'] },
+      { id: 'side', title: ['侧视图', 'Side view', 'Seitenansicht'] },
+      { id: 'top', title: ['俯视图', 'Top view', 'Draufsicht'] }
+    ];
+    const previousView = document.querySelector('.view-btn.active[data-view]')?.dataset.view || 'iso';
+    const viewImages = views.map(view => {
+      Renderer.setView(view.id);
+      return { title: view.title, data: Renderer.takeScreenshot() };
+    });
+    Renderer.setView(previousView);
+
+    const warnings = Optimizer.validateLoad(state.pallets, state.truck);
+    const stats = Optimizer.calculateOptimizationBreakdown(state.pallets, state.truck, warnings);
+    const insideCargo = state.pallets.filter(p => !Optimizer.isPalletOutsideTruck(p, state.truck));
+    const outsideCount = state.pallets.length - insideCargo.length;
+    const groupedCargo = new Map();
+    state.pallets.forEach(p => {
+      const key = [p.length, p.width, p.height, p.weight, Boolean(p.stackable), p.color].join('|');
+      const group = groupedCargo.get(key) || { ...p, count: 0 };
+      group.count++;
+      groupedCargo.set(key, group);
+    });
+    const cargoGroups = [...groupedCargo.values()];
+    const ldm = stats.loadingMetres.toFixed(2);
+    const ldmByLanguage = [`${ldm} 装载米`, `${ldm} loading metres`, `${ldm} Lademeter`];
+    const truckDimensions = `${(state.truck.length * 100).toFixed(0)} × ${(state.truck.width * 100).toFixed(0)} × ${(state.truck.height * 100).toFixed(0)} cm`;
+    const cargoTable = (language) => {
+      const labels = [
+        ['货物', '尺寸 (长×宽×高)', '数量', '单件重量', '可堆叠', '颜色'],
+        ['Cargo', 'Dimensions (L×W×H)', 'Qty', 'Unit weight', 'Stackable', 'Color'],
+        ['Ladung', 'Maße (L×B×H)', 'Menge', 'Einzelgewicht', 'Stapelbar', 'Farbe']
+      ][language];
+      const rows = cargoGroups.length ? cargoGroups.map(p => {
+        const color = /^#[0-9a-f]{6}$/i.test(p.color || '') ? p.color : '#777777';
+        const yesNo = language === 0 ? (p.stackable ? '是' : '否') : language === 1 ? (p.stackable ? 'Yes' : 'No') : (p.stackable ? 'Ja' : 'Nein');
+        return `<tr><td>${escapeReportText(p.name || '—')}</td><td>${(p.length * 100).toFixed(0)} × ${(p.width * 100).toFixed(0)} × ${(p.height * 100).toFixed(0)} cm</td><td>${p.count}</td><td>${Number(p.weight || 0).toLocaleString()} kg</td><td>${yesNo}</td><td><span class="color-chip" style="background:${color}"></span>${color}</td></tr>`;
+      }).join('') : `<tr><td colspan="6">${['暂无货物', 'No cargo', 'Keine Ladung'][language]}</td></tr>`;
+      return `<table><thead><tr>${labels.map(label => `<th>${label}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table>`;
+    };
+    const escapeReportText = value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
+    const chapterCopy = [
+      { title: '装载规划报告', disclaimer: '本方案仅供参考，以承运商实际装车为准。', result: '装载结果', complete: '完全装载', vehicle: '车辆信息', cargo: '货物信息', ldm: '装载米', loaded: `车内 ${insideCargo.length} 件 · 车外 ${outsideCount} 件`, yes: '是', no: '否', weight: '总重量', capacity: '载重上限', kingpin: '牵引销限值', tridem: '三轴组限值', images: '装载视图与载荷分布图', plan: 'Lastverteilungsplan · 载荷分布图' },
+      { title: 'Loading Plan Report', disclaimer: 'This plan is for reference only. The carrier’s actual loading takes precedence.', result: 'Loading result', complete: 'Fully loaded', vehicle: 'Vehicle information', cargo: 'Cargo information', ldm: 'Loading metres', loaded: `${insideCargo.length} inside · ${outsideCount} outside`, yes: 'Yes', no: 'No', weight: 'Total weight', capacity: 'Payload limit', kingpin: 'Kingpin limit', tridem: 'Tridem limit', images: 'Loading views and load distribution', plan: 'Lastverteilungsplan · Load distribution plan' },
+      { title: 'Ladeplan-Bericht', disclaimer: 'Dieser Plan dient nur zur Orientierung. Maßgeblich ist die tatsächliche Beladung durch den Frachtführer.', result: 'Ladeergebnis', complete: 'Vollständig geladen', vehicle: 'Fahrzeuginformationen', cargo: 'Ladungsinformationen', ldm: 'Lademeter', loaded: `${insideCargo.length} innen · ${outsideCount} außen`, yes: 'Ja', no: 'Nein', weight: 'Gesamtgewicht', capacity: 'Nutzlastgrenze', kingpin: 'Königszapfengrenze', tridem: 'Dreiachsaggregat-Grenze', images: 'Ladeansichten und Lastverteilung', plan: 'Lastverteilungsplan' }
+    ];
+    const maxWeight = Number(state.truck.maxWeight || 0).toLocaleString();
+    const chapters = chapterCopy.map((copy, language) => {
+      const complete = outsideCount === 0;
+      const completeLabel = language === 0 ? (complete ? copy.yes : `${copy.no}，${outsideCount} 件在车外`) : language === 1 ? (complete ? copy.yes : `${copy.no}, ${outsideCount} outside`) : (complete ? copy.yes : `${copy.no}, ${outsideCount} außerhalb`);
+      const truckHeading = language === 0 ? '车辆信息' : language === 1 ? 'Vehicle information' : 'Fahrzeuginformationen';
+      const loadResult = language === 0 ? '装载结果' : language === 1 ? 'Loading result' : 'Ladeergebnis';
+      const cargoTableHtml = cargoTable(language);
+      const supportLimits = state.truck.kind === 'trailer'
+        ? `<p>${copy.kingpin}: ${Number(state.truck.kingpinLimit || 0).toLocaleString()} kg · ${copy.tridem}: ${Number(state.truck.tridemLimit || 0).toLocaleString()} kg</p>`
+        : '';
+      const countTitle = ['件数（车内 / 总数）', 'Pieces (inside / total)', 'Stück (innen / gesamt)'][language];
+      const vehicleName = escapeReportText(state.truck.name);
+      return `<section class="chapter lang-${language}">
+        <div class="notice">${copy.disclaimer}</div><h1>${copy.title}</h1>
+        <h2>${loadResult}</h2><div class="summary-grid"><div><b>${copy.complete}</b><span>${completeLabel}</span></div><div><b>${copy.ldm}</b><span>${ldmByLanguage[language]}</span></div><div><b>${countTitle}</b><span>${insideCargo.length} / ${state.pallets.length}</span></div></div>
+        <h2>${truckHeading}</h2><table class="info"><tbody><tr><th>${vehicleName}</th><td>${truckDimensions}</td></tr><tr><th>${copy.weight} / ${copy.capacity}</th><td>${Number(stats.totalWeight || 0).toLocaleString()} kg / ${maxWeight} kg</td></tr></tbody></table>${supportLimits}
+        <h2>${copy.cargo}</h2>${cargoTableHtml}
+      </section>`;
+    }).join('');
+    const imagePages = viewImages.map((image, index) => `<section class="image-page"><h2>${image.title.map(text => `<span>${text}</span>`).join(' · ')}</h2><img src="${image.data}" alt="${image.title[1]}"></section>`).join('');
+    const planImage = els.loadDistributionCanvas.toDataURL('image/png');
+    const planPage = `<section class="image-page"><h2>${chapterCopy.map(copy => copy.plan).join(' · ')}</h2><img src="${planImage}" alt="Lastverteilungsplan load distribution plan"></section>`;
+    const date = new Date().toLocaleDateString('en-CA');
+    const reportHtml = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Loading report ${date}</title><style>
+      @page{size:A4 landscape;margin:12mm}*{box-sizing:border-box}body{font:13px/1.5 Arial,"Microsoft YaHei",sans-serif;color:#202833;margin:0}.chapter{page-break-after:always}.notice{border:1px solid #b84f4f;background:#fff3f1;color:#802c2c;padding:12px 16px;font-size:16px;font-weight:700;margin-bottom:14px}h1{font-size:25px;margin:0 0 12px}h2{font-size:16px;margin:15px 0 7px;color:#174b59}.summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.summary-grid div{border:1px solid #d7e0e5;border-radius:6px;padding:10px}.summary-grid b,.summary-grid span{display:block}.summary-grid span{margin-top:5px;font-size:16px}table{width:100%;border-collapse:collapse;font-size:11px}td,th{border:1px solid #cdd6dc;padding:6px 8px;text-align:left}thead th{background:#eaf0f2}.info th{width:27%;background:#f3f6f7}.color-chip{display:inline-block;width:13px;height:13px;border:1px solid #777;vertical-align:middle;margin-right:6px}.image-page{page-break-before:always;height:180mm;display:flex;flex-direction:column;align-items:center;justify-content:center}.image-page h2{width:100%;text-align:center;font-size:17px}.image-page img{max-width:100%;max-height:155mm;object-fit:contain}.print-controls{position:fixed;right:16px;top:12px;z-index:5}.print-controls button{border:0;border-radius:5px;background:#087e8b;color:white;padding:10px 14px;font-size:14px;cursor:pointer}@media print{.print-controls{display:none}}
+    </style></head><body><div class="print-controls"><button onclick="window.print()">打印 / 保存为 PDF · Print / Save as PDF</button></div>${chapters}${imagePages}${planPage}<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),500));<\/script></body></html>`;
+    reportWindow.document.open();
+    reportWindow.document.write(reportHtml);
+    reportWindow.document.close();
+  }
+
   // ---------- UI 更新 ----------
 
   function updateAll() {
@@ -1682,11 +1771,7 @@ const App = (function() {
   }
 
   function updateLoadDistributionPlan(stats) {
-    if (state.truck.kind !== 'trailer') {
-      els.loadPlanSection.hidden = true;
-      return;
-    }
-    els.loadPlanSection.hidden = false;
+    els.loadPlanSection.hidden = state.truck.kind !== 'trailer';
     const canvas = els.loadDistributionCanvas;
     const width = Math.max(260, canvas.clientWidth || 360);
     const height = 160;
